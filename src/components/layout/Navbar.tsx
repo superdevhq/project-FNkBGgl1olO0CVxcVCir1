@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -27,12 +27,21 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const { user, profile, signOut, refreshProfile } = useAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  // Set authentication state based on user
+  useEffect(() => {
+    console.log("Navbar: User state changed:", user ? "authenticated" : "not authenticated");
+    setIsAuthenticated(!!user);
+  }, [user]);
 
   // Refresh profile when component mounts or when user changes
   useEffect(() => {
     if (user) {
+      console.log("Navbar: Refreshing profile for user:", user.id);
       refreshProfile();
     }
   }, [user, refreshProfile]);
@@ -43,13 +52,37 @@ const Navbar = () => {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      console.log("Navbar: Signing out");
+      await signOut();
+      // Navigate to home page after sign out
+      navigate("/");
+    } catch (error) {
+      console.error("Navbar: Error signing out:", error);
+    }
   };
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
+
+  // If authentication state is still being determined, show a simplified navbar
+  if (isAuthenticated === null) {
+    return (
+      <header className="bg-white border-b sticky top-0 z-40">
+        <div className="container mx-auto px-4">
+          <div className="flex h-16 items-center justify-between">
+            <div className="flex items-center">
+              <Link to="/" className="text-xl font-bold text-purple-600">
+                EventHub
+              </Link>
+            </div>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="bg-white border-b sticky top-0 z-40">
@@ -78,7 +111,7 @@ const Navbar = () => {
               >
                 Browse Events
               </Link>
-              {user && (
+              {isAuthenticated && (
                 <Link 
                   to="/dashboard" 
                   className={`text-sm font-medium transition-colors hover:text-purple-600 ${
@@ -93,7 +126,7 @@ const Navbar = () => {
           
           {/* Desktop Action Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            {user ? (
+            {isAuthenticated ? (
               <>
                 <Button asChild className="bg-purple-600 hover:bg-purple-700">
                   <Link to="/create-event">Create Event</Link>
@@ -112,7 +145,7 @@ const Navbar = () => {
                       <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium leading-none">{profile?.full_name}</p>
                         <p className="text-xs leading-none text-muted-foreground">
-                          {user.email}
+                          {user?.email}
                         </p>
                       </div>
                     </DropdownMenuLabel>
@@ -179,7 +212,7 @@ const Navbar = () => {
                 >
                   Browse Events
                 </Link>
-                {user && (
+                {isAuthenticated && (
                   <Link 
                     to="/dashboard" 
                     className="text-lg font-medium hover:text-purple-600"
@@ -190,7 +223,7 @@ const Navbar = () => {
                 )}
                 
                 <div className="flex flex-col gap-2 mt-4">
-                  {user ? (
+                  {isAuthenticated ? (
                     <>
                       {profile && (
                         <div className="flex items-center gap-3 py-3">
@@ -200,7 +233,7 @@ const Navbar = () => {
                           </Avatar>
                           <div>
                             <p className="font-medium">{profile.full_name}</p>
-                            <p className="text-sm text-gray-500">{user.email}</p>
+                            <p className="text-sm text-gray-500">{user?.email}</p>
                           </div>
                         </div>
                       )}

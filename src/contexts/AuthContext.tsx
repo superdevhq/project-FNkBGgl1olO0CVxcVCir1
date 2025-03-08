@@ -182,6 +182,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       async (event, currentSession) => {
         console.log('Auth state changed:', event, currentSession?.user?.id);
         
+        // Handle sign out event explicitly
+        if (event === 'SIGNED_OUT') {
+          console.log('User signed out, clearing state');
+          setUser(null);
+          setProfile(null);
+          setSession(null);
+          setIsLoading(false);
+          setAuthChecked(true);
+          return;
+        }
+        
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         
@@ -297,6 +308,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       console.log('Signing out user');
       
+      // Clear state first to ensure UI updates immediately
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -306,10 +322,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('Sign out successful');
       
-      // Clear state
-      setUser(null);
-      setProfile(null);
-      setSession(null);
+      // Force a page reload to clear any cached state
+      window.location.href = '/';
       
       toast({
         title: "Signed out",
