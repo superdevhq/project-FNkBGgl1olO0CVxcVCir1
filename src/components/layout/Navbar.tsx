@@ -7,15 +7,41 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Menu, X } from "lucide-react";
+import { 
+  Menu, 
+  User,
+  LogOut,
+  Settings,
+  PlusCircle
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Navbar = () => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const { user, profile, signOut } = useAuth();
 
   // Check if the current path matches the given path
   const isActive = (path: string) => {
     return location.pathname === path;
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
   return (
@@ -45,25 +71,81 @@ const Navbar = () => {
               >
                 Browse Events
               </Link>
-              <Link 
-                to="/dashboard" 
-                className={`text-sm font-medium transition-colors hover:text-purple-600 ${
-                  isActive("/dashboard") ? "text-purple-600" : "text-gray-600"
-                }`}
-              >
-                Dashboard
-              </Link>
+              {user && (
+                <Link 
+                  to="/dashboard" 
+                  className={`text-sm font-medium transition-colors hover:text-purple-600 ${
+                    isActive("/dashboard") ? "text-purple-600" : "text-gray-600"
+                  }`}
+                >
+                  Dashboard
+                </Link>
+              )}
             </nav>
           </div>
           
           {/* Desktop Action Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <Button asChild variant="outline">
-              <Link to="/login">Log In</Link>
-            </Button>
-            <Button asChild className="bg-purple-600 hover:bg-purple-700">
-              <Link to="/create-event">Create Event</Link>
-            </Button>
+            {user ? (
+              <>
+                <Button asChild className="bg-purple-600 hover:bg-purple-700">
+                  <Link to="/create-event">Create Event</Link>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={profile?.avatar_url} alt={profile?.full_name} />
+                        <AvatarFallback>{getInitials(profile?.full_name)}</AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">{profile?.full_name}</p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user.email}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/dashboard" className="cursor-pointer">
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile" className="cursor-pointer">
+                        <User className="mr-2 h-4 w-4" />
+                        <span>Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/create-event" className="cursor-pointer">
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        <span>Create Event</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="outline">
+                  <Link to="/login">Log In</Link>
+                </Button>
+                <Button asChild className="bg-purple-600 hover:bg-purple-700">
+                  <Link to="/create-event">Create Event</Link>
+                </Button>
+              </>
+            )}
           </div>
           
           {/* Mobile Menu Button */}
@@ -90,24 +172,73 @@ const Navbar = () => {
                 >
                   Browse Events
                 </Link>
-                <Link 
-                  to="/dashboard" 
-                  className="text-lg font-medium hover:text-purple-600"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Dashboard
-                </Link>
+                {user && (
+                  <Link 
+                    to="/dashboard" 
+                    className="text-lg font-medium hover:text-purple-600"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                )}
+                
                 <div className="flex flex-col gap-2 mt-4">
-                  <Button asChild variant="outline">
-                    <Link to="/login" onClick={() => setIsOpen(false)}>
-                      Log In
-                    </Link>
-                  </Button>
-                  <Button asChild className="bg-purple-600 hover:bg-purple-700">
-                    <Link to="/create-event" onClick={() => setIsOpen(false)}>
-                      Create Event
-                    </Link>
-                  </Button>
+                  {user ? (
+                    <>
+                      {profile && (
+                        <div className="flex items-center gap-3 py-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={profile.avatar_url} alt={profile.full_name} />
+                            <AvatarFallback>{getInitials(profile.full_name)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{profile.full_name}</p>
+                            <p className="text-sm text-gray-500">{user.email}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <Link 
+                        to="/profile" 
+                        className="flex items-center gap-2 text-gray-700 hover:text-purple-600 py-2"
+                        onClick={() => setIsOpen(false)}
+                      >
+                        <User className="h-5 w-5" />
+                        <span>Profile</span>
+                      </Link>
+                      
+                      <Button asChild className="bg-purple-600 hover:bg-purple-700 mt-2">
+                        <Link to="/create-event" onClick={() => setIsOpen(false)}>
+                          Create Event
+                        </Link>
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        className="mt-2 flex items-center gap-2"
+                        onClick={() => {
+                          handleSignOut();
+                          setIsOpen(false);
+                        }}
+                      >
+                        <LogOut className="h-5 w-5" />
+                        <span>Log Out</span>
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button asChild variant="outline">
+                        <Link to="/login" onClick={() => setIsOpen(false)}>
+                          Log In
+                        </Link>
+                      </Button>
+                      <Button asChild className="bg-purple-600 hover:bg-purple-700">
+                        <Link to="/create-event" onClick={() => setIsOpen(false)}>
+                          Create Event
+                        </Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </nav>
             </SheetContent>
