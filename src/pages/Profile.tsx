@@ -50,6 +50,7 @@ const Profile = () => {
 
     // Initialize profile data when profile is loaded
     if (profile) {
+      console.log("Setting profile data from profile:", profile);
       setProfileData({
         full_name: profile.full_name || "",
         bio: profile.bio || "",
@@ -63,6 +64,7 @@ const Profile = () => {
     } else if (!isLoading) {
       // If profile is null but not loading, create default profile data
       if (user) {
+        console.log("Setting profile data from user:", user);
         setProfileData({
           full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || "",
           bio: "",
@@ -174,6 +176,7 @@ const Profile = () => {
         updatedProfile.avatar_url = avatarUrl;
       }
       
+      console.log("Submitting profile update:", updatedProfile);
       await updateProfile(updatedProfile);
       
       toast({
@@ -212,6 +215,16 @@ const Profile = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
+  };
+
+  // Get initials from name
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    return name.split(' ')
+      .filter(part => part.length > 0)
+      .map(part => part[0])
+      .join('')
+      .toUpperCase();
   };
 
   // Show loading state
@@ -263,7 +276,7 @@ const Profile = () => {
                           <Avatar className="w-24 h-24">
                             <AvatarImage src={avatarUrl} alt={profileData.full_name} />
                             <AvatarFallback>
-                              {profileData.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                              {getInitials(profileData.full_name)}
                             </AvatarFallback>
                           </Avatar>
                           <div>

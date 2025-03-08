@@ -428,6 +428,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       console.log('Updating profile for user:', user.id);
+      console.log('Profile data to update:', profileData);
       
       // Check if profile exists first
       const { data: existingProfile, error: checkError } = await supabase
@@ -441,25 +442,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw checkError;
       }
 
+      // Add updated_at timestamp
+      const dataToUpdate = {
+        ...profileData,
+        updated_at: new Date().toISOString(),
+      };
+      
       let updateError;
       
       if (existingProfile) {
-        console.log('Updating existing profile');
+        console.log('Updating existing profile with data:', dataToUpdate);
         // Update existing profile
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('profiles')
-          .update(profileData)
-          .eq('id', user.id);
+          .update(dataToUpdate)
+          .eq('id', user.id)
+          .select();
         
         updateError = error;
+        console.log('Update result:', error ? 'Error' : 'Success', data);
       } else {
-        console.log('Creating new profile');
+        console.log('Creating new profile with data:', { ...dataToUpdate, id: user.id });
         // Insert new profile
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from('profiles')
-          .insert({ ...profileData, id: user.id });
+          .insert({ ...dataToUpdate, id: user.id })
+          .select();
         
         updateError = error;
+        console.log('Insert result:', error ? 'Error' : 'Success', data);
       }
 
       if (updateError) {

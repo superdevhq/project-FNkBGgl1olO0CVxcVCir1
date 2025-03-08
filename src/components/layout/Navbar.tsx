@@ -62,9 +62,14 @@ const Navbar = () => {
     }
   };
 
+  // Get initials from name
   const getInitials = (name?: string) => {
     if (!name) return "U";
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    return name.split(' ')
+      .filter(part => part.length > 0)
+      .map(part => part[0])
+      .join('')
+      .toUpperCase();
   };
 
   // If authentication state is still being determined, show a simplified navbar
