@@ -17,7 +17,7 @@ import { UserProfile } from "@/contexts/AuthContext";
 
 const Profile = () => {
   const navigate = useNavigate();
-  const { user, profile, updateProfile, signOut, updatePassword, isLoading } = useAuth();
+  const { user, profile, refreshProfile, signOut, updatePassword, isLoading } = useAuth();
   
   const [profileData, setProfileData] = useState<Partial<UserProfile>>({
     full_name: "",
@@ -164,6 +164,59 @@ const Profile = () => {
     }
   };
 
+  // Direct update function that bypasses the context
+  const directUpdateProfile = async (profileData: Partial<UserProfile>) => {
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    
+    console.log("Directly updating profile in database:", profileData);
+    
+    // Add updated_at timestamp and user ID
+    const dataToUpdate = {
+      ...profileData,
+      id: user.id,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Check if profile exists
+    const { data: existingProfile, error: checkError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+      
+    if (checkError) {
+      console.error("Error checking profile:", checkError);
+      throw checkError;
+    }
+    
+    let result;
+    
+    if (existingProfile) {
+      console.log("Updating existing profile");
+      result = await supabase
+        .from('profiles')
+        .update(dataToUpdate)
+        .eq('id', user.id)
+        .select();
+    } else {
+      console.log("Creating new profile");
+      result = await supabase
+        .from('profiles')
+        .insert(dataToUpdate)
+        .select();
+    }
+    
+    if (result.error) {
+      console.error("Profile update failed:", result.error);
+      throw result.error;
+    }
+    
+    console.log("Profile update successful:", result.data);
+    return result.data[0];
+  };
+
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Profile form submitted");
@@ -189,9 +242,11 @@ const Profile = () => {
       
       console.log("Submitting profile update:", updatedProfile);
       
-      // Call updateProfile and wait for it to complete
-      await updateProfile(updatedProfile);
-      console.log("Profile update completed successfully");
+      // Use direct update instead of context function
+      await directUpdateProfile(updatedProfile);
+      
+      // Refresh profile data after update
+      await refreshProfile();
       
       // Reset avatar file state after successful upload
       setAvatarFile(null);
