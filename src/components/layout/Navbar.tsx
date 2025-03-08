@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +28,14 @@ import { useAuth } from "@/contexts/AuthContext";
 const Navbar = () => {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
+
+  // Refresh profile when component mounts or when user changes
+  useEffect(() => {
+    if (user) {
+      refreshProfile();
+    }
+  }, [user, refreshProfile]);
 
   // Check if the current path matches the given path
   const isActive = (path: string) => {

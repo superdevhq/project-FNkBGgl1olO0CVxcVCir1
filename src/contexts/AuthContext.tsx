@@ -15,6 +15,7 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 export interface UserProfile {
@@ -36,6 +37,108 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Function to fetch user profile
+  const fetchProfile = async (userId: string) => {
+    try {
+      console.log('Fetching profile for user:', userId);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+        // Create a default profile if one doesn't exist
+        await createDefaultProfile(userId);
+        return;
+      }
+
+      if (!data) {
+        console.log('No profile found, creating default profile');
+        // Create a default profile if one doesn't exist
+        await createDefaultProfile(userId);
+        return;
+      }
+
+      console.log('Profile found:', data);
+      setProfile(data);
+      setIsLoading(false);
+      setAuthChecked(true);
+    } catch (error) {
+      console.error('Error in profile fetch process:', error);
+      // Set a minimal profile to prevent loading spinner
+      setProfile({
+        id: userId,
+        full_name: user?.user_metadata?.full_name || 'User',
+      });
+      setIsLoading(false);
+      setAuthChecked(true);
+    }
+  };
+
+  // Function to refresh the user profile
+  const refreshProfile = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      await fetchProfile(user.id);
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
+      setIsLoading(false);
+    }
+  };
+
+  // Function to create a default profile
+  const createDefaultProfile = async (userId: string) => {
+    try {
+      console.log('Creating default profile for user:', userId);
+      
+      // Get user details to create a basic profile
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      const defaultProfile: Partial<UserProfile> = {
+        id: userId,
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+        email: user.email,
+      };
+      
+      console.log('Default profile data:', defaultProfile);
+      
+      // Insert the default profile
+      const { error } = await supabase
+        .from('profiles')
+        .insert(defaultProfile);
+      
+      if (error) {
+        console.error('Error inserting default profile:', error);
+        throw error;
+      }
+      
+      // Set the profile in state
+      setProfile(defaultProfile as UserProfile);
+      setIsLoading(false);
+      setAuthChecked(true);
+    } catch (error) {
+      console.error('Error creating default profile:', error);
+      // Set a minimal profile to prevent loading spinner
+      setProfile({
+        id: userId,
+        full_name: user?.user_metadata?.full_name || 'User',
+      });
+      setIsLoading(false);
+      setAuthChecked(true);
+    }
+  };
+
+  // Initialize auth state
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
@@ -98,91 +201,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
-    try {
-      console.log('Fetching profile for user:', userId);
+  // Force auth check to complete after a timeout to prevent infinite loading
+  useEffect(() => {
+    if (!authChecked && isLoading) {
+      const timer = setTimeout(() => {
+        console.log('Auth check timeout reached, forcing completion');
+        setIsLoading(false);
+        setAuthChecked(true);
+      }, 5000); // 5 second timeout
       
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching profile:', error);
-        // Create a default profile if one doesn't exist
-        await createDefaultProfile(userId);
-        return;
-      }
-
-      if (!data) {
-        console.log('No profile found, creating default profile');
-        // Create a default profile if one doesn't exist
-        await createDefaultProfile(userId);
-        return;
-      }
-
-      console.log('Profile found:', data);
-      setProfile(data);
-      setIsLoading(false);
-      setAuthChecked(true);
-    } catch (error) {
-      console.error('Error in profile fetch process:', error);
-      // Set a minimal profile to prevent loading spinner
-      setProfile({
-        id: userId,
-        full_name: user?.user_metadata?.full_name || 'User',
-      });
-      setIsLoading(false);
-      setAuthChecked(true);
+      return () => clearTimeout(timer);
     }
-  };
-
-  const createDefaultProfile = async (userId: string) => {
-    try {
-      console.log('Creating default profile for user:', userId);
-      
-      // Get user details to create a basic profile
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData?.user;
-      
-      if (!user) {
-        throw new Error('User not found');
-      }
-      
-      const defaultProfile: Partial<UserProfile> = {
-        id: userId,
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-        email: user.email,
-      };
-      
-      console.log('Default profile data:', defaultProfile);
-      
-      // Insert the default profile
-      const { error } = await supabase
-        .from('profiles')
-        .insert(defaultProfile);
-      
-      if (error) {
-        console.error('Error inserting default profile:', error);
-        throw error;
-      }
-      
-      // Set the profile in state
-      setProfile(defaultProfile as UserProfile);
-      setIsLoading(false);
-      setAuthChecked(true);
-    } catch (error) {
-      console.error('Error creating default profile:', error);
-      // Set a minimal profile to prevent loading spinner
-      setProfile({
-        id: userId,
-        full_name: user?.user_metadata?.full_name || 'User',
-      });
-      setIsLoading(false);
-      setAuthChecked(true);
-    }
-  };
+  }, [authChecked, isLoading]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
@@ -439,19 +469,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Force auth check to complete after a timeout to prevent infinite loading
-  useEffect(() => {
-    if (!authChecked && isLoading) {
-      const timer = setTimeout(() => {
-        console.log('Auth check timeout reached, forcing completion');
-        setIsLoading(false);
-        setAuthChecked(true);
-      }, 5000); // 5 second timeout
-      
-      return () => clearTimeout(timer);
-    }
-  }, [authChecked, isLoading]);
-
   const value = {
     session,
     user,
@@ -463,6 +480,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     resetPassword,
     updatePassword,
     updateProfile,
+    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
