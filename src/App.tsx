@@ -16,6 +16,7 @@ import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import JokePage from "./pages/JokePage";
 
 // Create a new QueryClient with retry disabled to prevent infinite loading
 const queryClient = new QueryClient({
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/jokes" element={<JokePage />} />
             
             {/* Protected Routes */}
             <Route 
