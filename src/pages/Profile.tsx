@@ -17,7 +17,7 @@ import { UserProfile } from "@/contexts/AuthContext";
 
 const Profile = () => {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile, signOut, updatePassword, isLoading } = useAuth();
+  const { user, profile, updateProfile, refreshProfile, signOut, updatePassword, isLoading } = useAuth();
   
   const [profileData, setProfileData] = useState<Partial<UserProfile>>({
     full_name: "",
@@ -26,8 +26,7 @@ const Profile = () => {
   
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [localLoading, setLocalLoading] = useState(true);
   
   const [passwordData, setPasswordData] = useState({
@@ -42,6 +41,7 @@ const Profile = () => {
     confirmPassword?: string;
   }>({});
 
+  // Initialize profile data when profile is loaded
   useEffect(() => {
     // If user is not authenticated, redirect to login
     if (!isLoading && !user) {
@@ -49,7 +49,6 @@ const Profile = () => {
       return;
     }
 
-    // Initialize profile data when profile is loaded
     if (profile) {
       console.log("Setting profile data from profile:", profile);
       setProfileData({
@@ -75,6 +74,7 @@ const Profile = () => {
     }
   }, [user, profile, isLoading, navigate]);
 
+  // Handle profile form field changes
   const handleProfileChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -85,6 +85,7 @@ const Profile = () => {
     }));
   };
 
+  // Handle password form field changes
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setPasswordData((prev) => ({
@@ -98,6 +99,7 @@ const Profile = () => {
     }
   };
 
+  // Handle avatar file selection
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -124,10 +126,9 @@ const Profile = () => {
     }
   };
 
+  // Upload avatar to storage
   const uploadAvatar = async (): Promise<string | null> => {
     if (!avatarFile || !user) return null;
-    
-    setIsUploading(true);
     
     try {
       console.log("Starting avatar upload");
@@ -159,69 +160,15 @@ const Profile = () => {
         variant: "destructive",
       });
       return null;
-    } finally {
-      setIsUploading(false);
     }
   };
 
-  // Direct update function that bypasses the context
-  const directUpdateProfile = async (profileData: Partial<UserProfile>) => {
-    if (!user) {
-      throw new Error("User not authenticated");
-    }
-    
-    console.log("Directly updating profile in database:", profileData);
-    
-    // Add updated_at timestamp and user ID
-    const dataToUpdate = {
-      ...profileData,
-      id: user.id,
-      updated_at: new Date().toISOString(),
-    };
-    
-    // Check if profile exists
-    const { data: existingProfile, error: checkError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
-      
-    if (checkError) {
-      console.error("Error checking profile:", checkError);
-      throw checkError;
-    }
-    
-    let result;
-    
-    if (existingProfile) {
-      console.log("Updating existing profile");
-      result = await supabase
-        .from('profiles')
-        .update(dataToUpdate)
-        .eq('id', user.id)
-        .select();
-    } else {
-      console.log("Creating new profile");
-      result = await supabase
-        .from('profiles')
-        .insert(dataToUpdate)
-        .select();
-    }
-    
-    if (result.error) {
-      console.error("Profile update failed:", result.error);
-      throw result.error;
-    }
-    
-    console.log("Profile update successful:", result.data);
-    return result.data[0];
-  };
-
+  // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Profile form submitted");
     setErrors({});
-    setIsSaving(true);
+    setIsSubmitting(true);
     
     try {
       let newAvatarUrl = null;
@@ -242,14 +189,15 @@ const Profile = () => {
       
       console.log("Submitting profile update:", updatedProfile);
       
-      // Use direct update instead of context function
-      await directUpdateProfile(updatedProfile);
-      
-      // Refresh profile data after update
-      await refreshProfile();
+      // Update profile
+      await updateProfile(updatedProfile);
+      console.log("Profile update completed successfully");
       
       // Reset avatar file state after successful upload
       setAvatarFile(null);
+      
+      // Refresh profile to ensure we have the latest data
+      await refreshProfile();
       
       toast({
         title: "Profile updated",
@@ -263,11 +211,11 @@ const Profile = () => {
         variant: "destructive",
       });
     } finally {
-      console.log("Setting isSaving to false");
-      setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
+  // Handle password form submission
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
@@ -278,7 +226,7 @@ const Profile = () => {
       return;
     }
     
-    setIsSaving(true);
+    setIsSubmitting(true);
     try {
       await updatePassword(passwordData.newPassword);
       
@@ -288,16 +236,34 @@ const Profile = () => {
         newPassword: "",
         confirmPassword: "",
       });
+      
+      toast({
+        title: "Password updated",
+        description: "Your password has been updated successfully.",
+      });
     } catch (error: any) {
       console.error("Password update error:", error);
+      toast({
+        title: "Error updating password",
+        description: error.message || "Failed to update password",
+        variant: "destructive",
+      });
     } finally {
-      setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
+  // Handle sign out
   const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
+    try {
+      setIsSubmitting(true);
+      await signOut();
+      navigate("/");
+    } catch (error) {
+      console.error("Sign out error:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Get initials from name
@@ -376,7 +342,7 @@ const Profile = () => {
                               variant="outline" 
                               size="sm"
                               onClick={() => document.getElementById('avatar')?.click()}
-                              disabled={isSaving || isUploading}
+                              disabled={isSubmitting}
                             >
                               Change Avatar
                             </Button>
@@ -392,7 +358,7 @@ const Profile = () => {
                               value={profileData.full_name}
                               onChange={handleProfileChange}
                               placeholder="Your full name"
-                              disabled={isSaving}
+                              disabled={isSubmitting}
                             />
                           </div>
                           
@@ -422,7 +388,7 @@ const Profile = () => {
                           onChange={handleProfileChange}
                           placeholder="Tell us a bit about yourself"
                           className="min-h-[120px]"
-                          disabled={isSaving}
+                          disabled={isSubmitting}
                         />
                       </div>
                     </CardContent>
@@ -431,16 +397,16 @@ const Profile = () => {
                         type="button" 
                         variant="outline" 
                         onClick={() => navigate("/dashboard")}
-                        disabled={isSaving || isUploading}
+                        disabled={isSubmitting}
                       >
                         Cancel
                       </Button>
                       <Button 
                         type="submit" 
                         className="bg-purple-600 hover:bg-purple-700"
-                        disabled={isSaving || isUploading}
+                        disabled={isSubmitting}
                       >
-                        {isSaving || isUploading ? (
+                        {isSubmitting ? (
                           <span className="flex items-center gap-2">
                             <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
                             Saving...
@@ -473,7 +439,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
-                          disabled={isSaving}
+                          disabled={isSubmitting}
                         />
                       </div>
                       
@@ -487,7 +453,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
-                          disabled={isSaving}
+                          disabled={isSubmitting}
                         />
                       </div>
                       
@@ -501,7 +467,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
-                          disabled={isSaving}
+                          disabled={isSubmitting}
                         />
                         {errors.confirmPassword && (
                           <p className="text-sm text-red-500">{errors.confirmPassword}</p>
@@ -512,12 +478,12 @@ const Profile = () => {
                       <Button 
                         type="submit" 
                         className="w-full bg-purple-600 hover:bg-purple-700"
-                        disabled={isSaving}
+                        disabled={isSubmitting}
                       >
-                        {isSaving ? (
+                        {isSubmitting ? (
                           <span className="flex items-center gap-2">
                             <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
-                            Updating...
+                            Updating Password...
                           </span>
                         ) : "Update Password"}
                       </Button>
@@ -541,9 +507,14 @@ const Profile = () => {
                       <Button 
                         variant="outline" 
                         onClick={handleSignOut}
-                        disabled={isSaving}
+                        disabled={isSubmitting}
                       >
-                        Sign Out
+                        {isSubmitting ? (
+                          <span className="flex items-center gap-2">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
+                            Signing Out...
+                          </span>
+                        ) : "Sign Out"}
                       </Button>
                     </div>
                     
@@ -562,7 +533,7 @@ const Profile = () => {
                             description: "Account deletion is not implemented yet.",
                           });
                         }}
-                        disabled={isSaving}
+                        disabled={isSubmitting}
                       >
                         Delete Account
                       </Button>

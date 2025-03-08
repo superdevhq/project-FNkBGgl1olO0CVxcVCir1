@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
 import Layout from "@/components/layout/Layout";
 
 const Login = () => {
@@ -14,7 +15,7 @@ const Login = () => {
   const location = useLocation();
   const { signIn, signUp, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
-  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Get the intended destination from location state, or default to dashboard
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
@@ -42,11 +43,11 @@ const Login = () => {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user && !formSubmitting) {
+    if (user && !isSubmitting) {
       console.log('User is authenticated, redirecting to:', from);
       navigate(from, { replace: true });
     }
-  }, [user, formSubmitting, navigate, from]);
+  }, [user, isSubmitting, navigate, from]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -72,7 +73,7 @@ const Login = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    setFormSubmitting(true);
+    setIsSubmitting(true);
 
     try {
       console.log('Attempting to sign in with:', loginData.email);
@@ -82,7 +83,7 @@ const Login = () => {
       console.error('Login error:', error);
       setErrors({ login: error.message || "Failed to sign in" });
     } finally {
-      setFormSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -96,21 +97,34 @@ const Login = () => {
       return;
     }
 
-    setFormSubmitting(true);
+    setIsSubmitting(true);
     try {
       console.log('Attempting to register with:', registerData.email);
       await signUp(registerData.email, registerData.password, registerData.fullName);
+      
+      // Clear form and switch to login tab
+      setRegisterData({
+        fullName: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+      });
       setActiveTab("login");
+      
+      toast({
+        title: "Account created",
+        description: "Please check your email for verification instructions.",
+      });
     } catch (error: any) {
       console.error('Registration error:', error);
       setErrors({ register: error.message || "Failed to create account" });
     } finally {
-      setFormSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
   // If still loading and not submitting a form, show loading spinner
-  if (isLoading && !formSubmitting) {
+  if (isLoading && !isSubmitting) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -123,7 +137,7 @@ const Login = () => {
     );
   }
 
-  // If user is authenticated, don't render the form
+  // If user is authenticated, show redirecting message
   if (user) {
     return (
       <Layout>
@@ -179,6 +193,7 @@ const Login = () => {
                         value={loginData.email}
                         onChange={handleLoginChange}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -199,6 +214,7 @@ const Login = () => {
                         value={loginData.password}
                         onChange={handleLoginChange}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     {errors.login && (
@@ -209,9 +225,14 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={formSubmitting}
+                      disabled={isSubmitting}
                     >
-                      {formSubmitting ? "Signing in..." : "Sign in"}
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
+                          Signing in...
+                        </span>
+                      ) : "Sign in"}
                     </Button>
                   </CardFooter>
                 </form>
@@ -236,6 +257,7 @@ const Login = () => {
                         value={registerData.fullName}
                         onChange={handleRegisterChange}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -248,6 +270,7 @@ const Login = () => {
                         value={registerData.email}
                         onChange={handleRegisterChange}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -260,6 +283,7 @@ const Login = () => {
                         value={registerData.password}
                         onChange={handleRegisterChange}
                         required
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
@@ -272,6 +296,7 @@ const Login = () => {
                         value={registerData.confirmPassword}
                         onChange={handleRegisterChange}
                         required
+                        disabled={isSubmitting}
                       />
                       {errors.confirmPassword && (
                         <p className="text-sm text-red-500">{errors.confirmPassword}</p>
@@ -285,9 +310,14 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={formSubmitting}
+                      disabled={isSubmitting}
                     >
-                      {formSubmitting ? "Creating account..." : "Create account"}
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
+                          Creating account...
+                        </span>
+                      ) : "Create account"}
                     </Button>
                   </CardFooter>
                 </form>

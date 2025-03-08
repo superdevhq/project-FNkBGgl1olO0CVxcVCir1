@@ -4,20 +4,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
-interface AuthContextType {
-  session: Session | null;
-  user: User | null;
-  profile: UserProfile | null;
-  isLoading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  updatePassword: (password: string) => Promise<void>;
-  updateProfile: (profile: Partial<UserProfile>) => Promise<boolean>;
-  refreshProfile: () => Promise<void>;
-}
-
+// Define the shape of our user profile
 export interface UserProfile {
   id: string;
   full_name: string;
@@ -28,6 +15,22 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+// Define the shape of our auth context
+interface AuthContextType {
+  session: Session | null;
+  user: User | null;
+  profile: UserProfile | null;
+  isLoading: boolean;
+  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  refreshProfile: () => Promise<void>;
+}
+
+// Create the context with undefined as default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -35,9 +38,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [authChecked, setAuthChecked] = useState(false);
 
-  // Function to fetch user profile
+  // Function to fetch user profile from Supabase
   const fetchProfile = async (userId: string) => {
     try {
       console.log('Fetching profile for user:', userId);
@@ -50,63 +52,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error) {
         console.error('Error fetching profile:', error);
-        // Create a default profile if one doesn't exist
-        await createDefaultProfile(userId);
-        return;
+        return null;
       }
 
       if (!data) {
-        console.log('No profile found, creating default profile');
-        // Create a default profile if one doesn't exist
-        await createDefaultProfile(userId);
-        return;
+        console.log('No profile found, will create default');
+        return null;
       }
 
-      console.log('Setting profile data from user:', data);
-      setProfile(data);
-      setIsLoading(false);
-      setAuthChecked(true);
+      console.log('Profile found:', data);
+      return data as UserProfile;
     } catch (error) {
       console.error('Error in profile fetch process:', error);
-      // Set a minimal profile to prevent loading spinner
-      setProfile({
-        id: userId,
-        full_name: user?.user_metadata?.full_name || 'User',
-      });
-      setIsLoading(false);
-      setAuthChecked(true);
-    }
-  };
-
-  // Function to refresh the user profile
-  const refreshProfile = async () => {
-    if (!user) return;
-    
-    try {
-      console.log('Refreshing profile for user:', user.id);
-      await fetchProfile(user.id);
-    } catch (error) {
-      console.error('Error refreshing profile:', error);
+      return null;
     }
   };
 
   // Function to create a default profile
-  const createDefaultProfile = async (userId: string) => {
+  const createDefaultProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
       console.log('Creating default profile for user:', userId);
       
-      // Get user details to create a basic profile
+      // Get current user details
       const { data: userData } = await supabase.auth.getUser();
       const currentUser = userData?.user;
       
       if (!currentUser) {
-        throw new Error('User not found');
+        console.error('User not found when creating default profile');
+        return null;
       }
       
-      const defaultProfile: Partial<UserProfile> = {
+      const defaultProfile: UserProfile = {
         id: userId,
         full_name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'User',
-        email: currentUser.email,
+        email: currentUser.email || '',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -121,128 +100,124 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (error) {
         console.error('Error inserting default profile:', error);
-        throw error;
+        return null;
       }
       
       console.log('Default profile created:', data);
-      
-      // Set the profile in state
-      setProfile(defaultProfile as UserProfile);
-      setIsLoading(false);
-      setAuthChecked(true);
+      return data[0] as UserProfile;
     } catch (error) {
       console.error('Error creating default profile:', error);
-      // Set a minimal profile to prevent loading spinner
-      if (userId) {
-        setProfile({
-          id: userId,
-          full_name: user?.user_metadata?.full_name || 'User',
-        });
+      return null;
+    }
+  };
+
+  // Function to ensure a user has a profile
+  const ensureProfile = async (userId: string): Promise<UserProfile | null> => {
+    const existingProfile = await fetchProfile(userId);
+    
+    if (existingProfile) {
+      return existingProfile;
+    }
+    
+    return await createDefaultProfile(userId);
+  };
+
+  // Function to refresh the user profile
+  const refreshProfile = async () => {
+    if (!user) {
+      console.log('Cannot refresh profile: No user logged in');
+      return;
+    }
+    
+    try {
+      console.log('Refreshing profile for user:', user.id);
+      const updatedProfile = await ensureProfile(user.id);
+      
+      if (updatedProfile) {
+        setProfile(updatedProfile);
       }
-      setIsLoading(false);
-      setAuthChecked(true);
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
     }
   };
 
   // Initialize auth state
   useEffect(() => {
-    let isMounted = true;
+    console.log('Initializing auth state');
+    setIsLoading(true);
     
     // Get initial session
-    const getInitialSession = async () => {
+    const initializeAuth = async () => {
       try {
-        if (isMounted) setIsLoading(true);
-        
         // Get the current session
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Error getting session:', error);
-          if (isMounted) {
-            setIsLoading(false);
-            setAuthChecked(true);
-          }
+          setIsLoading(false);
           return;
         }
         
         const currentSession = data.session;
+        setSession(currentSession);
         
-        if (isMounted) {
-          setSession(currentSession);
+        if (currentSession?.user) {
+          console.log('User is authenticated:', currentSession.user.id);
+          setUser(currentSession.user);
           
-          if (currentSession?.user) {
-            setUser(currentSession.user);
-            await fetchProfile(currentSession.user.id);
-          } else {
-            // No active session
-            setUser(null);
-            setProfile(null);
-            setIsLoading(false);
-            setAuthChecked(true);
-          }
+          // Ensure user has a profile
+          const userProfile = await ensureProfile(currentSession.user.id);
+          setProfile(userProfile);
+        } else {
+          console.log('No active session');
+          setUser(null);
+          setProfile(null);
         }
       } catch (error) {
-        console.error('Error in getInitialSession:', error);
-        if (isMounted) {
-          setIsLoading(false);
-          setAuthChecked(true);
-        }
+        console.error('Error in initializeAuth:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    getInitialSession();
+    initializeAuth();
 
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         console.log('Auth state changed:', event, currentSession?.user?.id);
         
-        if (!isMounted) return;
+        // Update session state
+        setSession(currentSession);
         
-        // Handle sign out event explicitly
         if (event === 'SIGNED_OUT') {
           console.log('User signed out, clearing state');
           setUser(null);
           setProfile(null);
-          setSession(null);
-          setIsLoading(false);
-          setAuthChecked(true);
           return;
         }
         
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
-        
-        if (currentSession?.user) {
-          await fetchProfile(currentSession.user.id);
-        } else {
-          setProfile(null);
-          setIsLoading(false);
-          setAuthChecked(true);
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (currentSession?.user) {
+            console.log('User signed in:', currentSession.user.id);
+            setUser(currentSession.user);
+            
+            // Ensure user has a profile
+            const userProfile = await ensureProfile(currentSession.user.id);
+            setProfile(userProfile);
+          }
         }
       }
     );
 
-    // Cleanup subscription and prevent state updates after unmount
+    // Cleanup subscription
     return () => {
-      isMounted = false;
+      console.log('Cleaning up auth subscription');
       subscription.unsubscribe();
     };
   }, []);
 
-  // Force auth check to complete after a timeout to prevent infinite loading
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (isLoading) {
-        console.log('Auth check timeout reached, forcing completion');
-        setIsLoading(false);
-        setAuthChecked(true);
-      }
-    }, 3000); // 3 second timeout
-    
-    return () => clearTimeout(timer);
-  }, [isLoading]);
-
+  // Sign up function
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
       setIsLoading(true);
@@ -284,6 +259,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Sign in function
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true);
@@ -306,9 +282,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(data.user);
       setSession(data.session);
       
-      // Fetch profile after successful sign in
+      // Ensure user has a profile
       if (data.user) {
-        await fetchProfile(data.user.id);
+        const userProfile = await ensureProfile(data.user.id);
+        setProfile(userProfile);
       }
       
       toast({
@@ -329,6 +306,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Sign out function
   const signOut = async () => {
     try {
       setIsLoading(true);
@@ -366,6 +344,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Reset password function
   const resetPassword = async (email: string) => {
     try {
       setIsLoading(true);
@@ -401,6 +380,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Update password function
   const updatePassword = async (password: string) => {
     try {
       setIsLoading(true);
@@ -436,86 +416,61 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateProfile = async (profileData: Partial<UserProfile>): Promise<boolean> => {
+  // Update profile function
+  const updateProfile = async (profileData: Partial<UserProfile>) => {
     try {
-      console.log('updateProfile called with data:', profileData);
-      
       if (!user) {
-        console.error('updateProfile error: User not authenticated');
         throw new Error("User not authenticated");
       }
 
       console.log('Updating profile for user:', user.id);
+      console.log('Profile data to update:', profileData);
       
-      // Check if profile exists first
-      const { data: existingProfile, error: checkError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('Error checking profile existence:', checkError);
-        throw checkError;
-      }
-
-      console.log('Existing profile check result:', existingProfile);
-
       // Add updated_at timestamp
       const dataToUpdate = {
         ...profileData,
         updated_at: new Date().toISOString(),
       };
       
+      // Check if profile exists
+      const existingProfile = await fetchProfile(user.id);
+      
       let result;
       
       if (existingProfile) {
-        console.log('Updating existing profile with data:', dataToUpdate);
-        // Update existing profile
+        console.log('Updating existing profile');
         result = await supabase
           .from('profiles')
           .update(dataToUpdate)
           .eq('id', user.id)
           .select();
       } else {
-        console.log('Creating new profile with data:', { ...dataToUpdate, id: user.id });
-        // Insert new profile
+        console.log('Creating new profile');
         result = await supabase
           .from('profiles')
           .insert({ ...dataToUpdate, id: user.id })
           .select();
       }
       
-      console.log('Database operation result:', result);
-      
       if (result.error) {
-        console.error('Profile update database error:', result.error);
+        console.error('Profile update error:', result.error);
         throw result.error;
       }
 
-      console.log('Profile updated successfully, data:', result.data);
+      console.log('Profile update successful:', result.data);
       
-      // Update profile state with the updated data
+      // Update profile state
       if (result.data && result.data.length > 0) {
-        const updatedProfile = result.data[0];
-        console.log('Setting updated profile in state:', updatedProfile);
-        
-        // Merge the existing profile with the updated data
-        setProfile(prev => {
-          const merged = {
-            ...prev,
-            ...updatedProfile
-          } as UserProfile;
-          console.log('Merged profile:', merged);
-          return merged;
-        });
+        setProfile(result.data[0] as UserProfile);
       } else {
-        // If no updated profile returned, refresh from database
-        console.log('No profile data returned, refreshing from database');
-        await fetchProfile(user.id);
+        // Refresh profile if no data returned
+        await refreshProfile();
       }
-
-      return true;
+      
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
     } catch (error: any) {
       console.error('Profile update error:', error);
       
@@ -528,6 +483,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Provide the auth context value
   const value = {
     session,
     user,
@@ -545,6 +501,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// Custom hook to use the auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
