@@ -46,9 +46,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (session?.user) {
         await fetchProfile(session.user.id);
+      } else {
+        setIsLoading(false);
       }
-      
-      setIsLoading(false);
     };
 
     getInitialSession();
@@ -63,9 +63,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await fetchProfile(session.user.id);
         } else {
           setProfile(null);
+          setIsLoading(false);
         }
-        
-        setIsLoading(false);
       }
     );
 
@@ -80,16 +79,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        throw error;
+        console.error('Error fetching profile:', error);
+        // Create a default profile if one doesn't exist
+        await createDefaultProfile(userId);
+        return;
+      }
+
+      if (!data) {
+        // Create a default profile if one doesn't exist
+        await createDefaultProfile(userId);
+        return;
       }
 
       setProfile(data);
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      setProfile(null);
+      console.error('Error in profile fetch process:', error);
+      // Set a minimal profile to prevent loading spinner
+      setProfile({
+        id: userId,
+        full_name: user?.user_metadata?.full_name || 'User',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createDefaultProfile = async (userId: string) => {
+    try {
+      // Get user details to create a basic profile
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
+      
+      if (!user) throw new Error('User not found');
+      
+      const defaultProfile: Partial<UserProfile> = {
+        id: userId,
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+        email: user.email,
+      };
+      
+      // Insert the default profile
+      const { error } = await supabase
+        .from('profiles')
+        .insert(defaultProfile);
+      
+      if (error) throw error;
+      
+      // Set the profile in state
+      setProfile(defaultProfile as UserProfile);
+    } catch (error) {
+      console.error('Error creating default profile:', error);
+      // Set a minimal profile to prevent loading spinner
+      setProfile({
+        id: userId,
+        full_name: user?.user_metadata?.full_name || 'User',
+      });
     }
   };
 
@@ -245,14 +292,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error("User not authenticated");
       }
 
-      const { error } = await supabase
+      // Check if profile exists first
+      const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
-        .update(profileData)
-        .eq('id', user.id);
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
 
-      if (error) {
-        throw error;
+      if (checkError) throw checkError;
+
+      let updateError;
+      
+      if (existingProfile) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('profiles')
+          .update(profileData)
+          .eq('id', user.id);
+        
+        updateError = error;
+      } else {
+        // Insert new profile
+        const { error } = await supabase
+          .from('profiles')
+          .insert({ ...profileData, id: user.id });
+        
+        updateError = error;
       }
+
+      if (updateError) throw updateError;
 
       // Refresh profile data
       await fetchProfile(user.id);

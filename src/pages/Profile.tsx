@@ -27,6 +27,7 @@ const Profile = () => {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(true);
   
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -41,11 +42,13 @@ const Profile = () => {
   }>({});
 
   useEffect(() => {
-    if (!user) {
+    // If user is not authenticated, redirect to login
+    if (!isLoading && !user) {
       navigate("/login");
       return;
     }
 
+    // Initialize profile data when profile is loaded
     if (profile) {
       setProfileData({
         full_name: profile.full_name || "",
@@ -55,8 +58,19 @@ const Profile = () => {
       if (profile.avatar_url) {
         setAvatarUrl(profile.avatar_url);
       }
+      
+      setLocalLoading(false);
+    } else if (!isLoading) {
+      // If profile is null but not loading, create default profile data
+      if (user) {
+        setProfileData({
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || "",
+          bio: "",
+        });
+      }
+      setLocalLoading(false);
     }
-  }, [user, profile, navigate]);
+  }, [user, profile, isLoading, navigate]);
 
   const handleProfileChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -200,14 +214,23 @@ const Profile = () => {
     navigate("/");
   };
 
-  if (!user || !profile) {
+  // Show loading state
+  if (isLoading || localLoading) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <p>Loading profile...</p>
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            <p className="text-gray-600">Loading profile...</p>
+          </div>
         </div>
       </Layout>
     );
+  }
+
+  // If no user, redirect to login (handled in useEffect)
+  if (!user) {
+    return null;
   }
 
   return (
