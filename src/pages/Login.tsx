@@ -15,7 +15,6 @@ const Login = () => {
   const { signIn, signUp, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
   const [formSubmitting, setFormSubmitting] = useState(false);
-  const [redirectAttempted, setRedirectAttempted] = useState(false);
   
   // Get the intended destination from location state, or default to dashboard
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
@@ -43,14 +42,11 @@ const Login = () => {
 
   // Redirect if already logged in
   useEffect(() => {
-    // Only attempt redirect if not currently submitting a form
-    // and we haven't already attempted a redirect
-    if (user && !formSubmitting && !redirectAttempted) {
+    if (user && !formSubmitting) {
       console.log('User is authenticated, redirecting to:', from);
-      setRedirectAttempted(true);
       navigate(from, { replace: true });
     }
-  }, [user, formSubmitting, navigate, from, redirectAttempted]);
+  }, [user, formSubmitting, navigate, from]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -81,8 +77,7 @@ const Login = () => {
     try {
       console.log('Attempting to sign in with:', loginData.email);
       await signIn(loginData.email, loginData.password);
-      // Reset redirect attempted flag to allow a new redirect after successful login
-      setRedirectAttempted(false);
+      // Navigation will happen in the useEffect when user state updates
     } catch (error: any) {
       console.error('Login error:', error);
       setErrors({ login: error.message || "Failed to sign in" });
@@ -128,8 +123,8 @@ const Login = () => {
     );
   }
 
-  // If user is authenticated and we're in the process of redirecting, show redirecting message
-  if (user && redirectAttempted) {
+  // If user is authenticated, don't render the form
+  if (user) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -146,11 +141,6 @@ const Login = () => {
         </div>
       </Layout>
     );
-  }
-
-  // If user is authenticated but we haven't attempted to redirect yet, don't render the form
-  if (user && !redirectAttempted) {
-    return null;
   }
 
   return (

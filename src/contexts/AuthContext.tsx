@@ -96,29 +96,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       // Get user details to create a basic profile
       const { data: userData } = await supabase.auth.getUser();
-      const user = userData?.user;
+      const currentUser = userData?.user;
       
-      if (!user) {
+      if (!currentUser) {
         throw new Error('User not found');
       }
       
       const defaultProfile: Partial<UserProfile> = {
         id: userId,
-        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-        email: user.email,
+        full_name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'User',
+        email: currentUser.email,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       
       console.log('Default profile data:', defaultProfile);
       
       // Insert the default profile
-      const { error } = await supabase
+      const { error, data } = await supabase
         .from('profiles')
-        .insert(defaultProfile);
+        .insert(defaultProfile)
+        .select();
       
       if (error) {
         console.error('Error inserting default profile:', error);
         throw error;
       }
+      
+      console.log('Default profile created:', data);
       
       // Set the profile in state
       setProfile(defaultProfile as UserProfile);
@@ -127,10 +132,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error('Error creating default profile:', error);
       // Set a minimal profile to prevent loading spinner
-      setProfile({
-        id: userId,
-        full_name: user?.user_metadata?.full_name || 'User',
-      });
+      if (userId) {
+        setProfile({
+          id: userId,
+          full_name: user?.user_metadata?.full_name || 'User',
+        });
+      }
       setIsLoading(false);
       setAuthChecked(true);
     }
@@ -294,6 +301,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('Sign in successful:', data.user?.id);
       
+      // Explicitly set user and session
+      setUser(data.user);
+      setSession(data.session);
+      
+      // Fetch profile after successful sign in
+      if (data.user) {
+        await fetchProfile(data.user.id);
+      }
+      
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
@@ -449,6 +465,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       
       let updateError;
+      let updatedProfile;
       
       if (existingProfile) {
         console.log('Updating existing profile with data:', dataToUpdate);
@@ -460,6 +477,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .select();
         
         updateError = error;
+        updatedProfile = data?.[0];
         console.log('Update result:', error ? 'Error' : 'Success', data);
       } else {
         console.log('Creating new profile with data:', { ...dataToUpdate, id: user.id });
@@ -470,6 +488,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .select();
         
         updateError = error;
+        updatedProfile = data?.[0];
         console.log('Insert result:', error ? 'Error' : 'Success', data);
       }
 
@@ -480,8 +499,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('Profile updated successfully');
       
-      // Refresh profile data
-      await fetchProfile(user.id);
+      // Update profile state with the updated data
+      if (updatedProfile) {
+        setProfile(updatedProfile);
+      } else {
+        // If no updated profile returned, refresh from database
+        await fetchProfile(user.id);
+      }
 
       toast({
         title: "Profile updated",
