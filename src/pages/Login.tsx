@@ -1,6 +1,6 @@
 
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,13 @@ import Layout from "@/components/layout/Layout";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { signIn, signUp, isLoading } = useAuth();
+  const location = useLocation();
+  const { signIn, signUp, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
+  const [localLoading, setLocalLoading] = useState(false);
+  
+  // Get the intended destination from location state, or default to dashboard
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
   
   // Login form state
   const [loginData, setLoginData] = useState({
@@ -34,6 +39,13 @@ const Login = () => {
     register?: string;
     confirmPassword?: string;
   }>({});
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !isLoading) {
+      navigate(from, { replace: true });
+    }
+  }, [user, isLoading, navigate, from]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -59,12 +71,15 @@ const Login = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setLocalLoading(true);
 
     try {
       await signIn(loginData.email, loginData.password);
-      navigate("/dashboard");
-    } catch (error) {
-      // Error is handled in the auth context
+      // Don't navigate here - the useEffect will handle it
+    } catch (error: any) {
+      setErrors({ login: error.message || "Failed to sign in" });
+    } finally {
+      setLocalLoading(false);
     }
   };
 
@@ -78,13 +93,30 @@ const Login = () => {
       return;
     }
 
+    setLocalLoading(true);
     try {
       await signUp(registerData.email, registerData.password, registerData.fullName);
       setActiveTab("login");
-    } catch (error) {
-      // Error is handled in the auth context
+    } catch (error: any) {
+      setErrors({ register: error.message || "Failed to create account" });
+    } finally {
+      setLocalLoading(false);
     }
   };
+
+  // Show loading state while checking authentication
+  if (isLoading && !localLoading) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            <p className="text-gray-600">Checking authentication...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -152,9 +184,9 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={isLoading}
+                      disabled={localLoading}
                     >
-                      {isLoading ? "Signing in..." : "Sign in"}
+                      {localLoading ? "Signing in..." : "Sign in"}
                     </Button>
                   </CardFooter>
                 </form>
@@ -228,9 +260,9 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={isLoading}
+                      disabled={localLoading}
                     >
-                      {isLoading ? "Creating account..." : "Create account"}
+                      {localLoading ? "Creating account..." : "Create account"}
                     </Button>
                   </CardFooter>
                 </form>

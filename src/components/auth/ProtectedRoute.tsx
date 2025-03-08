@@ -28,6 +28,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   if (isLoading) {
     if (waitTime >= 2) {
       // If loading takes too long, redirect to login
+      // Pass the current location so we can redirect back after login
       return <Navigate to="/login" state={{ from: location }} replace />;
     }
     
@@ -42,6 +43,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // If not authenticated, redirect to login
+  // Pass the current location so we can redirect back after login
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
