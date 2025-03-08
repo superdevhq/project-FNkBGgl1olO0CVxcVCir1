@@ -130,23 +130,29 @@ const Profile = () => {
     setIsUploading(true);
     
     try {
+      console.log("Starting avatar upload");
       const fileExt = avatarFile.name.split('.').pop();
       const filePath = `avatars/${user.id}-${Date.now()}.${fileExt}`;
       
+      console.log("Uploading to path:", filePath);
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, avatarFile);
         
       if (uploadError) {
+        console.error("Avatar upload error:", uploadError);
         throw uploadError;
       }
       
+      console.log("Avatar uploaded successfully, getting public URL");
       const { data } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
         
+      console.log("Avatar public URL:", data.publicUrl);
       return data.publicUrl;
     } catch (error: any) {
+      console.error("Avatar upload error:", error);
       toast({
         title: "Error uploading avatar",
         description: error.message,
@@ -160,6 +166,7 @@ const Profile = () => {
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Profile form submitted");
     setErrors({});
     setIsSaving(true);
     
@@ -167,7 +174,9 @@ const Profile = () => {
       let newAvatarUrl = null;
       
       if (avatarFile) {
+        console.log("Uploading avatar file");
         newAvatarUrl = await uploadAvatar();
+        console.log("Avatar upload result:", newAvatarUrl);
       }
       
       const updatedProfile: Partial<UserProfile> = {
@@ -179,7 +188,10 @@ const Profile = () => {
       }
       
       console.log("Submitting profile update:", updatedProfile);
+      
+      // Call updateProfile and wait for it to complete
       await updateProfile(updatedProfile);
+      console.log("Profile update completed successfully");
       
       // Reset avatar file state after successful upload
       setAvatarFile(null);
@@ -196,6 +208,7 @@ const Profile = () => {
         variant: "destructive",
       });
     } finally {
+      console.log("Setting isSaving to false");
       setIsSaving(false);
     }
   };

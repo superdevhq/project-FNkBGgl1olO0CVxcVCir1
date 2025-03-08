@@ -14,7 +14,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
-  updateProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  updateProfile: (profile: Partial<UserProfile>) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -436,14 +436,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateProfile = async (profileData: Partial<UserProfile>) => {
+  const updateProfile = async (profileData: Partial<UserProfile>): Promise<boolean> => {
     try {
+      console.log('updateProfile called with data:', profileData);
+      
       if (!user) {
+        console.error('updateProfile error: User not authenticated');
         throw new Error("User not authenticated");
       }
 
       console.log('Updating profile for user:', user.id);
-      console.log('Profile data to update:', profileData);
       
       // Check if profile exists first
       const { data: existingProfile, error: checkError } = await supabase
@@ -457,56 +459,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw checkError;
       }
 
+      console.log('Existing profile check result:', existingProfile);
+
       // Add updated_at timestamp
       const dataToUpdate = {
         ...profileData,
         updated_at: new Date().toISOString(),
       };
       
-      let updateError;
-      let updatedProfile;
+      let result;
       
       if (existingProfile) {
         console.log('Updating existing profile with data:', dataToUpdate);
         // Update existing profile
-        const { error, data } = await supabase
+        result = await supabase
           .from('profiles')
           .update(dataToUpdate)
           .eq('id', user.id)
           .select();
-        
-        updateError = error;
-        updatedProfile = data?.[0];
-        console.log('Update result:', error ? 'Error' : 'Success', data);
       } else {
         console.log('Creating new profile with data:', { ...dataToUpdate, id: user.id });
         // Insert new profile
-        const { error, data } = await supabase
+        result = await supabase
           .from('profiles')
           .insert({ ...dataToUpdate, id: user.id })
           .select();
-        
-        updateError = error;
-        updatedProfile = data?.[0];
-        console.log('Insert result:', error ? 'Error' : 'Success', data);
+      }
+      
+      console.log('Database operation result:', result);
+      
+      if (result.error) {
+        console.error('Profile update database error:', result.error);
+        throw result.error;
       }
 
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        throw updateError;
-      }
-
-      console.log('Profile updated successfully');
+      console.log('Profile updated successfully, data:', result.data);
       
       // Update profile state with the updated data
-      if (updatedProfile) {
-        // Merge the existing profile with the updated data to ensure we don't lose fields
-        setProfile(prev => ({
-          ...prev,
-          ...updatedProfile
-        } as UserProfile));
+      if (result.data && result.data.length > 0) {
+        const updatedProfile = result.data[0];
+        console.log('Setting updated profile in state:', updatedProfile);
+        
+        // Merge the existing profile with the updated data
+        setProfile(prev => {
+          const merged = {
+            ...prev,
+            ...updatedProfile
+          } as UserProfile;
+          console.log('Merged profile:', merged);
+          return merged;
+        });
       } else {
         // If no updated profile returned, refresh from database
+        console.log('No profile data returned, refreshing from database');
         await fetchProfile(user.id);
       }
 
