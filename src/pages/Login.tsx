@@ -15,6 +15,7 @@ const Login = () => {
   const { signIn, signUp, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
   const [localLoading, setLocalLoading] = useState(false);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
   
   // Get the intended destination from location state, or default to dashboard
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
@@ -40,12 +41,22 @@ const Login = () => {
     confirmPassword?: string;
   }>({});
 
+  // Set initial check done after a timeout to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInitialCheckDone(true);
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
   // Redirect if already logged in
   useEffect(() => {
-    if (user && !isLoading) {
+    if (user && !localLoading) {
+      console.log('User is authenticated, redirecting to:', from);
       navigate(from, { replace: true });
     }
-  }, [user, isLoading, navigate, from]);
+  }, [user, localLoading, navigate, from]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -74,9 +85,11 @@ const Login = () => {
     setLocalLoading(true);
 
     try {
+      console.log('Attempting to sign in with:', loginData.email);
       await signIn(loginData.email, loginData.password);
       // Don't navigate here - the useEffect will handle it
     } catch (error: any) {
+      console.error('Login error:', error);
       setErrors({ login: error.message || "Failed to sign in" });
     } finally {
       setLocalLoading(false);
@@ -95,9 +108,11 @@ const Login = () => {
 
     setLocalLoading(true);
     try {
+      console.log('Attempting to register with:', registerData.email);
       await signUp(registerData.email, registerData.password, registerData.fullName);
       setActiveTab("login");
     } catch (error: any) {
+      console.error('Registration error:', error);
       setErrors({ register: error.message || "Failed to create account" });
     } finally {
       setLocalLoading(false);
@@ -105,13 +120,27 @@ const Login = () => {
   };
 
   // Show loading state while checking authentication
-  if (isLoading && !localLoading) {
+  if (isLoading && !initialCheckDone) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
             <p className="text-gray-600">Checking authentication...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // If user is already authenticated, show a redirecting message
+  if (user) {
+    return (
+      <Layout>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            <p className="text-gray-600">You are already logged in. Redirecting...</p>
           </div>
         </div>
       </Layout>

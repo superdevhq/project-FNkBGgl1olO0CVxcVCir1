@@ -11,27 +11,32 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
   const [waitTime, setWaitTime] = useState(0);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
+
+  // Set initial check done after a timeout to prevent infinite loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInitialCheckDone(true);
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   // Add a timer to prevent infinite loading
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setWaitTime(prev => prev + 1);
-      }, 3000);
+      }, 2000);
       
       return () => clearTimeout(timer);
     }
   }, [isLoading, waitTime]);
 
   // If still loading, show a loading spinner
-  // But if loading takes too long (more than 6 seconds), redirect to login
-  if (isLoading) {
-    if (waitTime >= 2) {
-      // If loading takes too long, redirect to login
-      // Pass the current location so we can redirect back after login
-      return <Navigate to="/login" state={{ from: location }} replace />;
-    }
-    
+  // But if loading takes too long (more than 4 seconds), proceed with the check
+  if (isLoading && !initialCheckDone && waitTime < 2) {
+    console.log('ProtectedRoute: Still loading, showing spinner');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -43,12 +48,13 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // If not authenticated, redirect to login
-  // Pass the current location so we can redirect back after login
   if (!user) {
+    console.log('ProtectedRoute: User not authenticated, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // If authenticated, render the protected component
+  console.log('ProtectedRoute: User authenticated, rendering protected content');
   return <>{children}</>;
 };
 

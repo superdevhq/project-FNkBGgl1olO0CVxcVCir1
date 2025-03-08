@@ -34,40 +34,65 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      setIsLoading(true);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      } else {
+      try {
+        setIsLoading(true);
+        
+        // Get the current session
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setIsLoading(false);
+          setAuthChecked(true);
+          return;
+        }
+        
+        const currentSession = data.session;
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
+          setUser(currentSession.user);
+          await fetchProfile(currentSession.user.id);
+        } else {
+          // No active session
+          setUser(null);
+          setProfile(null);
+          setIsLoading(false);
+          setAuthChecked(true);
+        }
+      } catch (error) {
+        console.error('Error in getInitialSession:', error);
         setIsLoading(false);
+        setAuthChecked(true);
       }
     };
 
     getInitialSession();
 
-    // Listen for auth changes
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      async (event, currentSession) => {
+        console.log('Auth state changed:', event, currentSession?.user?.id);
         
-        if (session?.user) {
-          await fetchProfile(session.user.id);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        
+        if (currentSession?.user) {
+          await fetchProfile(currentSession.user.id);
         } else {
           setProfile(null);
           setIsLoading(false);
+          setAuthChecked(true);
         }
       }
     );
 
+    // Cleanup subscription
     return () => {
       subscription.unsubscribe();
     };
@@ -75,6 +100,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string) => {
     try {
+      console.log('Fetching profile for user:', userId);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -89,12 +116,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (!data) {
+        console.log('No profile found, creating default profile');
         // Create a default profile if one doesn't exist
         await createDefaultProfile(userId);
         return;
       }
 
+      console.log('Profile found:', data);
       setProfile(data);
+      setIsLoading(false);
+      setAuthChecked(true);
     } catch (error) {
       console.error('Error in profile fetch process:', error);
       // Set a minimal profile to prevent loading spinner
@@ -102,18 +133,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         id: userId,
         full_name: user?.user_metadata?.full_name || 'User',
       });
-    } finally {
       setIsLoading(false);
+      setAuthChecked(true);
     }
   };
 
   const createDefaultProfile = async (userId: string) => {
     try {
+      console.log('Creating default profile for user:', userId);
+      
       // Get user details to create a basic profile
       const { data: userData } = await supabase.auth.getUser();
       const user = userData?.user;
       
-      if (!user) throw new Error('User not found');
+      if (!user) {
+        throw new Error('User not found');
+      }
       
       const defaultProfile: Partial<UserProfile> = {
         id: userId,
@@ -121,15 +156,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email: user.email,
       };
       
+      console.log('Default profile data:', defaultProfile);
+      
       // Insert the default profile
       const { error } = await supabase
         .from('profiles')
         .insert(defaultProfile);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting default profile:', error);
+        throw error;
+      }
       
       // Set the profile in state
       setProfile(defaultProfile as UserProfile);
+      setIsLoading(false);
+      setAuthChecked(true);
     } catch (error) {
       console.error('Error creating default profile:', error);
       // Set a minimal profile to prevent loading spinner
@@ -137,12 +179,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         id: userId,
         full_name: user?.user_metadata?.full_name || 'User',
       });
+      setIsLoading(false);
+      setAuthChecked(true);
     }
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
       setIsLoading(true);
+      
+      console.log('Signing up user:', email);
       
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -155,14 +201,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (error) {
+        console.error('Sign up error:', error);
         throw error;
       }
 
+      console.log('Sign up successful:', data);
+      
       toast({
         title: "Account created",
         description: "Please check your email to confirm your account.",
       });
     } catch (error: any) {
+      console.error('Sign up error:', error);
+      
       toast({
         title: "Error creating account",
         description: error.message,
@@ -178,20 +229,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsLoading(true);
       
+      console.log('Signing in user:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
+        console.error('Sign in error:', error);
         throw error;
       }
 
+      console.log('Sign in successful:', data.user?.id);
+      
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
       });
     } catch (error: any) {
+      console.error('Sign in error:', error);
+      
       toast({
         title: "Error signing in",
         description: error.message,
@@ -207,17 +265,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsLoading(true);
       
+      console.log('Signing out user');
+      
       const { error } = await supabase.auth.signOut();
 
       if (error) {
+        console.error('Sign out error:', error);
         throw error;
       }
 
+      console.log('Sign out successful');
+      
+      // Clear state
+      setUser(null);
+      setProfile(null);
+      setSession(null);
+      
       toast({
         title: "Signed out",
         description: "You have been signed out successfully.",
       });
     } catch (error: any) {
+      console.error('Sign out error:', error);
+      
       toast({
         title: "Error signing out",
         description: error.message,
@@ -232,19 +302,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsLoading(true);
       
+      console.log('Resetting password for:', email);
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
 
       if (error) {
+        console.error('Password reset error:', error);
         throw error;
       }
 
+      console.log('Password reset email sent');
+      
       toast({
         title: "Password reset email sent",
         description: "Check your email for a link to reset your password.",
       });
     } catch (error: any) {
+      console.error('Password reset error:', error);
+      
       toast({
         title: "Error resetting password",
         description: error.message,
@@ -260,19 +337,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsLoading(true);
       
+      console.log('Updating password');
+      
       const { error } = await supabase.auth.updateUser({
         password,
       });
 
       if (error) {
+        console.error('Update password error:', error);
         throw error;
       }
 
+      console.log('Password updated successfully');
+      
       toast({
         title: "Password updated",
         description: "Your password has been updated successfully.",
       });
     } catch (error: any) {
+      console.error('Update password error:', error);
+      
       toast({
         title: "Error updating password",
         description: error.message,
@@ -292,6 +376,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error("User not authenticated");
       }
 
+      console.log('Updating profile for user:', user.id);
+      
       // Check if profile exists first
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
@@ -299,11 +385,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .eq('id', user.id)
         .maybeSingle();
 
-      if (checkError) throw checkError;
+      if (checkError) {
+        console.error('Error checking profile existence:', checkError);
+        throw checkError;
+      }
 
       let updateError;
       
       if (existingProfile) {
+        console.log('Updating existing profile');
         // Update existing profile
         const { error } = await supabase
           .from('profiles')
@@ -312,6 +402,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         updateError = error;
       } else {
+        console.log('Creating new profile');
         // Insert new profile
         const { error } = await supabase
           .from('profiles')
@@ -320,8 +411,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updateError = error;
       }
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Profile update error:', updateError);
+        throw updateError;
+      }
 
+      console.log('Profile updated successfully');
+      
       // Refresh profile data
       await fetchProfile(user.id);
 
@@ -330,6 +426,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description: "Your profile has been updated successfully.",
       });
     } catch (error: any) {
+      console.error('Profile update error:', error);
+      
       toast({
         title: "Error updating profile",
         description: error.message,
@@ -340,6 +438,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
     }
   };
+
+  // Force auth check to complete after a timeout to prevent infinite loading
+  useEffect(() => {
+    if (!authChecked && isLoading) {
+      const timer = setTimeout(() => {
+        console.log('Auth check timeout reached, forcing completion');
+        setIsLoading(false);
+        setAuthChecked(true);
+      }, 5000); // 5 second timeout
+      
+      return () => clearTimeout(timer);
+    }
+  }, [authChecked, isLoading]);
 
   const value = {
     session,
