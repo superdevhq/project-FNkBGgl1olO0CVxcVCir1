@@ -82,12 +82,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfile = async () => {
     if (!user) return;
     
-    setIsLoading(true);
     try {
       await fetchProfile(user.id);
     } catch (error) {
       console.error('Error refreshing profile:', error);
-      setIsLoading(false);
     }
   };
 
@@ -140,38 +138,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Initialize auth state
   useEffect(() => {
+    let isMounted = true;
+    
     // Get initial session
     const getInitialSession = async () => {
       try {
-        setIsLoading(true);
+        if (isMounted) setIsLoading(true);
         
         // Get the current session
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Error getting session:', error);
-          setIsLoading(false);
-          setAuthChecked(true);
+          if (isMounted) {
+            setIsLoading(false);
+            setAuthChecked(true);
+          }
           return;
         }
         
         const currentSession = data.session;
-        setSession(currentSession);
         
-        if (currentSession?.user) {
-          setUser(currentSession.user);
-          await fetchProfile(currentSession.user.id);
-        } else {
-          // No active session
-          setUser(null);
-          setProfile(null);
-          setIsLoading(false);
-          setAuthChecked(true);
+        if (isMounted) {
+          setSession(currentSession);
+          
+          if (currentSession?.user) {
+            setUser(currentSession.user);
+            await fetchProfile(currentSession.user.id);
+          } else {
+            // No active session
+            setUser(null);
+            setProfile(null);
+            setIsLoading(false);
+            setAuthChecked(true);
+          }
         }
       } catch (error) {
         console.error('Error in getInitialSession:', error);
-        setIsLoading(false);
-        setAuthChecked(true);
+        if (isMounted) {
+          setIsLoading(false);
+          setAuthChecked(true);
+        }
       }
     };
 
@@ -181,6 +188,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         console.log('Auth state changed:', event, currentSession?.user?.id);
+        
+        if (!isMounted) return;
         
         // Handle sign out event explicitly
         if (event === 'SIGNED_OUT') {
@@ -206,24 +215,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    // Cleanup subscription
+    // Cleanup subscription and prevent state updates after unmount
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
   // Force auth check to complete after a timeout to prevent infinite loading
   useEffect(() => {
-    if (!authChecked && isLoading) {
-      const timer = setTimeout(() => {
+    const timer = setTimeout(() => {
+      if (isLoading) {
         console.log('Auth check timeout reached, forcing completion');
         setIsLoading(false);
         setAuthChecked(true);
-      }, 5000); // 5 second timeout
-      
-      return () => clearTimeout(timer);
-    }
-  }, [authChecked, isLoading]);
+      }
+    }, 3000); // 3 second timeout
+    
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
@@ -308,11 +318,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       console.log('Signing out user');
       
-      // Clear state first to ensure UI updates immediately
-      setUser(null);
-      setProfile(null);
-      setSession(null);
-      
       const { error } = await supabase.auth.signOut();
 
       if (error) {
@@ -322,8 +327,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('Sign out successful');
       
-      // Force a page reload to clear any cached state
-      window.location.href = '/';
+      // Clear state
+      setUser(null);
+      setProfile(null);
+      setSession(null);
       
       toast({
         title: "Signed out",

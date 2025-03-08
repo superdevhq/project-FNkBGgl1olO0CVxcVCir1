@@ -14,8 +14,8 @@ const Login = () => {
   const location = useLocation();
   const { signIn, signUp, isLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
-  const [localLoading, setLocalLoading] = useState(false);
-  const [initialCheckDone, setInitialCheckDone] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [redirectAttempted, setRedirectAttempted] = useState(false);
   
   // Get the intended destination from location state, or default to dashboard
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
@@ -41,22 +41,16 @@ const Login = () => {
     confirmPassword?: string;
   }>({});
 
-  // Set initial check done after a timeout to prevent infinite loading
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setInitialCheckDone(true);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, []);
-
   // Redirect if already logged in
   useEffect(() => {
-    if (user && !localLoading) {
+    // Only attempt redirect if not currently submitting a form
+    // and we haven't already attempted a redirect
+    if (user && !formSubmitting && !redirectAttempted) {
       console.log('User is authenticated, redirecting to:', from);
+      setRedirectAttempted(true);
       navigate(from, { replace: true });
     }
-  }, [user, localLoading, navigate, from]);
+  }, [user, formSubmitting, navigate, from, redirectAttempted]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -82,17 +76,18 @@ const Login = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    setLocalLoading(true);
+    setFormSubmitting(true);
 
     try {
       console.log('Attempting to sign in with:', loginData.email);
       await signIn(loginData.email, loginData.password);
-      // Don't navigate here - the useEffect will handle it
+      // Reset redirect attempted flag to allow a new redirect after successful login
+      setRedirectAttempted(false);
     } catch (error: any) {
       console.error('Login error:', error);
       setErrors({ login: error.message || "Failed to sign in" });
     } finally {
-      setLocalLoading(false);
+      setFormSubmitting(false);
     }
   };
 
@@ -106,7 +101,7 @@ const Login = () => {
       return;
     }
 
-    setLocalLoading(true);
+    setFormSubmitting(true);
     try {
       console.log('Attempting to register with:', registerData.email);
       await signUp(registerData.email, registerData.password, registerData.fullName);
@@ -115,12 +110,12 @@ const Login = () => {
       console.error('Registration error:', error);
       setErrors({ register: error.message || "Failed to create account" });
     } finally {
-      setLocalLoading(false);
+      setFormSubmitting(false);
     }
   };
 
-  // Show loading state while checking authentication
-  if (isLoading && !initialCheckDone) {
+  // If still loading and not submitting a form, show loading spinner
+  if (isLoading && !formSubmitting) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -133,18 +128,29 @@ const Login = () => {
     );
   }
 
-  // If user is already authenticated, show a redirecting message
-  if (user) {
+  // If user is authenticated and we're in the process of redirecting, show redirecting message
+  if (user && redirectAttempted) {
     return (
       <Layout>
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
             <p className="text-gray-600">You are already logged in. Redirecting...</p>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate(from, { replace: true })}
+            >
+              Click here if you're not redirected
+            </Button>
           </div>
         </div>
       </Layout>
     );
+  }
+
+  // If user is authenticated but we haven't attempted to redirect yet, don't render the form
+  if (user && !redirectAttempted) {
+    return null;
   }
 
   return (
@@ -213,9 +219,9 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={localLoading}
+                      disabled={formSubmitting}
                     >
-                      {localLoading ? "Signing in..." : "Sign in"}
+                      {formSubmitting ? "Signing in..." : "Sign in"}
                     </Button>
                   </CardFooter>
                 </form>
@@ -289,9 +295,9 @@ const Login = () => {
                     <Button
                       type="submit"
                       className="w-full bg-purple-600 hover:bg-purple-700"
-                      disabled={localLoading}
+                      disabled={formSubmitting}
                     >
-                      {localLoading ? "Creating account..." : "Create account"}
+                      {formSubmitting ? "Creating account..." : "Create account"}
                     </Button>
                   </CardFooter>
                 </form>
