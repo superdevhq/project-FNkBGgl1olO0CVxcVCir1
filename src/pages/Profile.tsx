@@ -27,6 +27,7 @@ const Profile = () => {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [localLoading, setLocalLoading] = useState(true);
   
   const [passwordData, setPasswordData] = useState({
@@ -160,31 +161,42 @@ const Profile = () => {
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setIsSaving(true);
     
     try {
-      let avatarUrl = null;
+      let newAvatarUrl = null;
       
       if (avatarFile) {
-        avatarUrl = await uploadAvatar();
+        newAvatarUrl = await uploadAvatar();
       }
       
       const updatedProfile: Partial<UserProfile> = {
         ...profileData,
       };
       
-      if (avatarUrl) {
-        updatedProfile.avatar_url = avatarUrl;
+      if (newAvatarUrl) {
+        updatedProfile.avatar_url = newAvatarUrl;
       }
       
       console.log("Submitting profile update:", updatedProfile);
       await updateProfile(updatedProfile);
       
+      // Reset avatar file state after successful upload
+      setAvatarFile(null);
+      
       toast({
         title: "Profile updated",
         description: "Your profile has been updated successfully.",
       });
-    } catch (error) {
-      // Error is handled in the auth context
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      toast({
+        title: "Error updating profile",
+        description: error.message || "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -198,6 +210,7 @@ const Profile = () => {
       return;
     }
     
+    setIsSaving(true);
     try {
       await updatePassword(passwordData.newPassword);
       
@@ -207,8 +220,10 @@ const Profile = () => {
         newPassword: "",
         confirmPassword: "",
       });
-    } catch (error) {
-      // Error is handled in the auth context
+    } catch (error: any) {
+      console.error("Password update error:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -293,6 +308,7 @@ const Profile = () => {
                               variant="outline" 
                               size="sm"
                               onClick={() => document.getElementById('avatar')?.click()}
+                              disabled={isSaving || isUploading}
                             >
                               Change Avatar
                             </Button>
@@ -308,6 +324,7 @@ const Profile = () => {
                               value={profileData.full_name}
                               onChange={handleProfileChange}
                               placeholder="Your full name"
+                              disabled={isSaving}
                             />
                           </div>
                           
@@ -337,6 +354,7 @@ const Profile = () => {
                           onChange={handleProfileChange}
                           placeholder="Tell us a bit about yourself"
                           className="min-h-[120px]"
+                          disabled={isSaving}
                         />
                       </div>
                     </CardContent>
@@ -345,15 +363,21 @@ const Profile = () => {
                         type="button" 
                         variant="outline" 
                         onClick={() => navigate("/dashboard")}
+                        disabled={isSaving || isUploading}
                       >
                         Cancel
                       </Button>
                       <Button 
                         type="submit" 
                         className="bg-purple-600 hover:bg-purple-700"
-                        disabled={isLoading || isUploading}
+                        disabled={isSaving || isUploading}
                       >
-                        {isLoading || isUploading ? "Saving..." : "Save Changes"}
+                        {isSaving || isUploading ? (
+                          <span className="flex items-center gap-2">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
+                            Saving...
+                          </span>
+                        ) : "Save Changes"}
                       </Button>
                     </CardFooter>
                   </form>
@@ -381,6 +405,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
+                          disabled={isSaving}
                         />
                       </div>
                       
@@ -394,6 +419,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
+                          disabled={isSaving}
                         />
                       </div>
                       
@@ -407,6 +433,7 @@ const Profile = () => {
                           onChange={handlePasswordChange}
                           placeholder="••••••••"
                           required
+                          disabled={isSaving}
                         />
                         {errors.confirmPassword && (
                           <p className="text-sm text-red-500">{errors.confirmPassword}</p>
@@ -417,9 +444,14 @@ const Profile = () => {
                       <Button 
                         type="submit" 
                         className="w-full bg-purple-600 hover:bg-purple-700"
-                        disabled={isLoading}
+                        disabled={isSaving}
                       >
-                        {isLoading ? "Updating..." : "Update Password"}
+                        {isSaving ? (
+                          <span className="flex items-center gap-2">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>
+                            Updating...
+                          </span>
+                        ) : "Update Password"}
                       </Button>
                     </CardFooter>
                   </form>
@@ -441,6 +473,7 @@ const Profile = () => {
                       <Button 
                         variant="outline" 
                         onClick={handleSignOut}
+                        disabled={isSaving}
                       >
                         Sign Out
                       </Button>
@@ -461,6 +494,7 @@ const Profile = () => {
                             description: "Account deletion is not implemented yet.",
                           });
                         }}
+                        disabled={isSaving}
                       >
                         Delete Account
                       </Button>

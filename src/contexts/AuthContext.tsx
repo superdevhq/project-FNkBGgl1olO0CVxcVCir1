@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      console.log('Profile found:', data);
+      console.log('Setting profile data from user:', data);
       setProfile(data);
       setIsLoading(false);
       setAuthChecked(true);
@@ -83,6 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     
     try {
+      console.log('Refreshing profile for user:', user.id);
       await fetchProfile(user.id);
     } catch (error) {
       console.error('Error refreshing profile:', error);
@@ -437,8 +438,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProfile = async (profileData: Partial<UserProfile>) => {
     try {
-      setIsLoading(true);
-      
       if (!user) {
         throw new Error("User not authenticated");
       }
@@ -449,7 +448,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Check if profile exists first
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -501,16 +500,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       // Update profile state with the updated data
       if (updatedProfile) {
-        setProfile(updatedProfile);
+        // Merge the existing profile with the updated data to ensure we don't lose fields
+        setProfile(prev => ({
+          ...prev,
+          ...updatedProfile
+        } as UserProfile));
       } else {
         // If no updated profile returned, refresh from database
         await fetchProfile(user.id);
       }
 
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been updated successfully.",
-      });
+      return true;
     } catch (error: any) {
       console.error('Profile update error:', error);
       
@@ -520,8 +520,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         variant: "destructive",
       });
       throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
